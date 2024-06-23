@@ -22,6 +22,7 @@ struct Query {
 struct CurrentUserInfo {
     user_id: Uuid,
     name: String,
+    email: Option<String>,
     is_email_confirmed: bool,
     is_linked: bool,
     session_length: u64,
@@ -80,6 +81,7 @@ async fn user_info_get(
     Ok(Json(CurrentUserInfo {
         user_id: user.user_id,
         name: user.name,
+        email: identity.email,
         is_email_confirmed: identity.is_email_confirmed,
         is_linked,
         session_length,
