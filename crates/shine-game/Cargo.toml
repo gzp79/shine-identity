@@ -6,6 +6,12 @@ edition.workspace = true
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[features]
+# Non-growing heap backed by a fixed static arena.
+static-heap = ["dep:talc", "dep:lock_api"]
+# Allocation metrics for the dev HUD.
+heap-profile = ["talc?/counters"]
+
 [dependencies]
 log = { workspace = true }
 tracing = { workspace = true }
@@ -15,6 +21,8 @@ glam = { workspace = true }
 itertools = { workspace = true }
 rand = { workspace = true }
 thiserror = { workspace = true }
+talc = { workspace = true, optional = true }
+lock_api = { workspace = true, optional = true }
 
 shine-core = { workspace = true }
 

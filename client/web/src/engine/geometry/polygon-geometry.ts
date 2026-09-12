@@ -1,9 +1,9 @@
 import * as THREE from 'three';
-import type { PolygonMesh, WiredPolygonMesh } from '../../mesh/polygon-mesh';
+import type { PolygonMeshLike, WiredPolygonMeshLike } from '../../mesh/polygon-mesh';
 
 const PRISM_HEIGHT = 100.0;
 
-export function buildGeometryFromPolygons(mesh: PolygonMesh): THREE.BufferGeometry {
+export function buildGeometryFromPolygons(mesh: PolygonMeshLike): THREE.BufferGeometry {
     const positions: number[] = [];
     const { vertices, indices, ranges } = mesh;
     const polygonCount = ranges.length / 2;
@@ -35,7 +35,7 @@ export function buildGeometryFromPolygons(mesh: PolygonMesh): THREE.BufferGeomet
     return geometry;
 }
 
-export function buildGeometryFromWires(mesh: WiredPolygonMesh): THREE.BufferGeometry {
+export function buildGeometryFromWires(mesh: WiredPolygonMeshLike): THREE.BufferGeometry {
     const positions: number[] = [];
     const { vertices, wireIndices, wireRanges } = mesh;
     const wireCount = wireRanges.length / 2;
@@ -66,9 +66,10 @@ export function buildGeometryFromWires(mesh: WiredPolygonMesh): THREE.BufferGeom
     return geometry;
 }
 
-export function buildPrismGeometry(mesh: PolygonMesh, polygonId: number): THREE.BufferGeometry {
-    const start = mesh.ranges[polygonId * 2];
-    const end = mesh.ranges[polygonId * 2 + 1];
+export function buildPrismGeometry(mesh: PolygonMeshLike, polygonId: number): THREE.BufferGeometry {
+    const { vertices, indices, ranges } = mesh;
+    const start = ranges[polygonId * 2];
+    const end = ranges[polygonId * 2 + 1];
     const n = end - start;
 
     if (n < 3) {
@@ -77,8 +78,8 @@ export function buildPrismGeometry(mesh: PolygonMesh, polygonId: number): THREE.
 
     const polyVertices: Array<[number, number]> = [];
     for (let i = 0; i < n; i++) {
-        const idx = mesh.indices[start + i];
-        polyVertices.push([mesh.vertices[idx * 2], mesh.vertices[idx * 2 + 1]]);
+        const idx = indices[start + i];
+        polyVertices.push([vertices[idx * 2], vertices[idx * 2 + 1]]);
     }
 
     const positions: number[] = [];

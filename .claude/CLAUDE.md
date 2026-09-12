@@ -56,6 +56,9 @@ Rust workspace with identity/builder services. Stack: Axum, PostgreSQL, Redis, T
 
 ## Agent Conventions
 
+### Rust crate docs
+Look up crate API, features, and versions on docs.rs (`https://docs.rs/<crate>/latest/<crate>/`) rather than guessing.
+
 ### Skills
 Project skills live in `.claude/skills/`. Invoke before working in a domain.
 
@@ -79,6 +82,15 @@ HTML files under `docs/<domain>/`. Domain subfolders:
 | cross-cutting | `docs/shared/` |
 
 Docs are human-readable HTML + agentic extensions: `<details data-agent="implementation|test|security|…">` blocks (collapsed by default) carry implementation notes, test plans, and other detail targeted at agents. CSS: `docs/doc.css` (shared, GitHub-raw-friendly via relative path). Conventions: `.claude/skills/sdp/references/conventions.md`.
+
+Only SDP HTML design docs live under `docs/`. Everything else agent-produced is scratch — see below.
+
+### Scratch & temp files
+`temp/` (gitignored) is the scratch area for AI agents. Put anything not meant for git here, so the user can track what's going on without it polluting the working tree or getting auto-committed:
+- Plans and non-SDP designs (freeform markdown, drafts) — a design becomes a committed doc only when written as SDP HTML under `docs/`
+- Background task / subagent output, logs, review notes, todo scratch, and other transient artifacts
+
+Default any such file to `temp/`. Do not write scratch into `docs/`, source dirs, or the repo root.
 
 ## Type-Level Flow Control
 **Goal**: Use Rust's type system to encode "continue vs error" and "success vs failure" in function signatures

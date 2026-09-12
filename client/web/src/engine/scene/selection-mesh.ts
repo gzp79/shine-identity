@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { PolygonMesh } from '../../mesh/polygon-mesh';
+import type { PolygonMeshLike } from '../../mesh/polygon-mesh';
 import { buildPrismGeometry } from '../geometry/polygon-geometry';
 
 export class SelectionMesh {
@@ -8,7 +8,7 @@ export class SelectionMesh {
 
     constructor(
         private readonly parent: THREE.Group,
-        private readonly polygonData: PolygonMesh
+        private readonly polygonData: PolygonMeshLike
     ) {
         this.material = new THREE.MeshBasicMaterial({
             color: 0xffdd00,

@@ -1,4 +1,5 @@
 mod experiments;
+mod heap;
 mod math;
 mod mesh;
 mod world;

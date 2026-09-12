@@ -8,37 +8,38 @@ on:
     branches: [main]
 
 env:
-  BUCKET_LINK: https://ce847ac4c44fb11af63e62ba34ec40db.r2.cloudflarestorage.com
-  BUCKET_NAME: shine-games
+  R2_ENDPOINT: https://ce847ac4c44fb11af63e62ba34ec40db.r2.cloudflarestorage.com
+  R2_BUCKET: shine-games
 
 jobs:
   cleanup:
     runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push')
     steps:
-      - name: Setup AWS CLI
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: pnpm
+          cache-dependency-path: tests/pnpm-lock.yaml
+
+      - name: Install dependencies
+        working-directory: tests
+        run: pnpm install
+
+      - name: Delete outdated content
+        working-directory: tests
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: auto
-        run: |
-          aws configure set aws_access_key_id "$AWS_ACCESS_KEY_ID"
-          aws configure set aws_secret_access_key "$AWS_SECRET_ACCESS_KEY"
-          aws configure set default.region "$AWS_DEFAULT_REGION"
-
-      - name: Read latest.json
-        id: read_latest
-        run: |
-          aws s3 cp s3://${BUCKET_NAME}/latest.json ./latest.json --endpoint-url=${BUCKET_LINK}
-          VERSION=$(jq -r '.version' latest.json)
-          echo "LATEST_VERSION=$VERSION" >> $GITHUB_ENV
-
-      - name: Delete old folders
-        run: |
-          aws s3 ls s3://${BUCKET_NAME}/ --endpoint-url=${BUCKET_LINK} \
-            | awk '{print $2}' \
-            | grep -vE "${LATEST_VERSION}|latest\.json" \
-            | while read -r folder; do
-                if [ -n "$folder" ]; then
-                  aws s3 rm "s3://${BUCKET_NAME}/${folder}" --recursive --endpoint-url=${BUCKET_LINK}
-                fi
-              done
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: pnpm run r2:cleanup

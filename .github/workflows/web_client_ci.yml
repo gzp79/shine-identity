@@ -13,8 +13,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  S3_BUCKET_LINK: https://ce847ac4c44fb11af63e62ba34ec40db.r2.cloudflarestorage.com
-  S3_BUCKET_NAME: shine-games
+  R2_ENDPOINT: https://ce847ac4c44fb11af63e62ba34ec40db.r2.cloudflarestorage.com
+  R2_BUCKET: shine-games
 
 jobs:
   web-client-build:
@@ -54,7 +54,9 @@ jobs:
         with:
           node-version: 22.x
           cache: pnpm
-          cache-dependency-path: client/web/pnpm-lock.yaml
+          cache-dependency-path: |
+            client/web/pnpm-lock.yaml
+            tests/pnpm-lock.yaml
 
       - name: Install dependencies
         working-directory: client/web
@@ -72,46 +74,15 @@ jobs:
         working-directory: client/web
         run: pnpm test
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: web-client
-          path: client/web/dist/
-          retention-days: 1
+      - name: Install deploy tooling
+        if: github.ref == 'refs/heads/main'
+        working-directory: tests
+        run: pnpm install
 
-  deploy:
-    needs: web-client-build
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-
-    steps:
-      - name: Download artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: web-client
-          path: ./dist
-
-      - name: Upload game assets
+      - name: Deploy game bundle
+        if: github.ref == 'refs/heads/main'
+        working-directory: tests
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: auto
-        run: |
-          aws s3 sync ./dist s3://${S3_BUCKET_NAME}/${{ github.sha }}/ \
-            --endpoint-url=${S3_BUCKET_LINK} \
-            --cache-control "public, max-age=31536000, immutable" \
-            --checksum-algorithm CRC32
-
-      - name: Upload latest.json
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: auto
-        run: |
-          jq -n --arg version "${{ github.sha }}" '{version: $version}' > ./latest.json
-          aws s3 cp ./latest.json s3://${S3_BUCKET_NAME}/latest.json \
-            --endpoint-url=${S3_BUCKET_LINK} \
-            --cache-control "no-cache, no-store, must-revalidate" \
-            --content-type "application/json"
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: pnpm run r2:deploy

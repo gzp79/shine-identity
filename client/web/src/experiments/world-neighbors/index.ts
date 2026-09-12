@@ -3,14 +3,14 @@ import * as THREE from 'three';
 import type { SceneContext } from '../../engine/scene';
 import { Experiment } from '../experiment';
 import { createControls, defaultParams } from './controls';
-import { buildChunkHexagons, buildEdgeMeshes, buildInteriorMeshes, buildVertexMeshes } from './mesh-builder';
+import { buildChunkHexagons, buildCornerMeshes, buildEdgeMeshes, buildInteriorMeshes } from './mesh-builder';
 
 export class WorldNeighbors extends Experiment {
     private params = defaultParams();
     private hexagons: THREE.Group | null = null;
     private interiorGroup: ReturnType<typeof buildInteriorMeshes> | null = null;
     private edgeGroup: ReturnType<typeof buildEdgeMeshes> | null = null;
-    private vertexGroup: ReturnType<typeof buildVertexMeshes> | null = null;
+    private cornerGroup: ReturnType<typeof buildCornerMeshes> | null = null;
     constructor(context: SceneContext) {
         super(context, { title: 'World Neighbors' });
 
@@ -37,8 +37,8 @@ export class WorldNeighbors extends Experiment {
         if (this.edgeGroup) {
             for (let i = 0; i < 6; i++) this.edgeGroup.setIndividualVisible(i, this.params.showEdges[i]);
         }
-        if (this.vertexGroup) {
-            for (let i = 0; i < 6; i++) this.vertexGroup.setIndividualVisible(i, this.params.showVertices[i]);
+        if (this.cornerGroup) {
+            for (let i = 0; i < 6; i++) this.cornerGroup.setIndividualVisible(i, this.params.showCorners[i]);
         }
     }
 
@@ -63,10 +63,10 @@ export class WorldNeighbors extends Experiment {
             this.edgeGroup.dispose();
             this.edgeGroup = null;
         }
-        if (this.vertexGroup) {
-            this.scene.remove(this.vertexGroup.group);
-            this.vertexGroup.dispose();
-            this.vertexGroup = null;
+        if (this.cornerGroup) {
+            this.scene.remove(this.cornerGroup.group);
+            this.cornerGroup.dispose();
+            this.cornerGroup = null;
         }
     }
 
@@ -84,8 +84,8 @@ export class WorldNeighbors extends Experiment {
             this.edgeGroup = buildEdgeMeshes(wasmData);
             this.scene.add(this.edgeGroup.group);
 
-            this.vertexGroup = buildVertexMeshes(wasmData);
-            this.scene.add(this.vertexGroup.group);
+            this.cornerGroup = buildCornerMeshes(wasmData);
+            this.scene.add(this.cornerGroup.group);
 
             wasmData.free();
             this.applyDisplay();

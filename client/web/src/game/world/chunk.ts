@@ -4,6 +4,7 @@ import { EventSubscriptions } from '../../engine/events';
 import { SelectionMesh } from '../../engine/scene/selection-mesh';
 import { WireMesh } from '../../engine/scene/wire-mesh';
 import { computeLocalCentroids } from '../../mesh/centroid';
+import { asPolygonMesh } from '../../mesh/polygon-mesh';
 import { ChunkId } from './chunk-id';
 import { SELECTION_CHANGED, type SelectionChangedEvent } from './selection/selection-event';
 
@@ -34,7 +35,7 @@ export class Chunk {
     ) {
         this.group.userData = { chunkId: { q: id.q, r: id.r }, chunk: this };
         this.innerCells = world.inner_cells(id.q, id.r)!;
-        this.selectionMesh = new SelectionMesh(this.group, this.innerCells);
+        this.selectionMesh = new SelectionMesh(this.group, asPolygonMesh(this.innerCells));
         this.subscriptions = new EventSubscriptions(events);
         this.subscriptions.on<SelectionChangedEvent>(SELECTION_CHANGED, this.handleSelectionChanged);
     }
@@ -87,7 +88,7 @@ export class Chunk {
 
     get centroids(): Float32Array {
         if (!this._centroids) {
-            this._centroids = computeLocalCentroids(this.innerCells)!;
+            this._centroids = computeLocalCentroids(asPolygonMesh(this.innerCells))!;
         }
         return this._centroids;
     }
@@ -148,7 +149,7 @@ export class Chunk {
             return;
         }
 
-        this.cellWires = WireMesh.fromPolygons(this.group, this.innerCells);
+        this.cellWires = WireMesh.fromPolygons(this.group, asPolygonMesh(this.innerCells));
         this.cellWires.show();
     }
 }

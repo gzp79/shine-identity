@@ -1,6 +1,8 @@
 use crate::{
-    math::hex::{HexFlatDir, HexPointyDir},
-    wasm::world::{CornerCellsHandle, EdgeCellsHandle, InnerCellsHandle},
+    wasm::{
+        math::{HexFlatDir, HexPointyDir},
+        world::{CornerCellsHandle, EdgeCellsHandle, InnerCellsHandle},
+    },
     world::{ChunkId, World, CELL_WORLD_SIZE, CHUNK_WORLD_SIZE},
 };
 use tracing::info_span;
@@ -53,15 +55,13 @@ impl WasmWorld {
         self.world.inner_cells(ChunkId(q, r)).map(|c| c.into())
     }
 
-    pub fn edge_cells(&self, q: i32, r: i32, edge_idx: u8) -> Option<EdgeCellsHandle> {
-        self.world
-            .edge_cells(ChunkId(q, r), HexFlatDir::from_index(edge_idx as usize))
-            .map(|c| c.into())
+    pub fn edge_cells(&self, q: i32, r: i32, edge_idx: HexFlatDir) -> Option<EdgeCellsHandle> {
+        self.world.edge_cells(ChunkId(q, r), edge_idx.into()).map(|c| c.into())
     }
 
-    pub fn corner_cells(&self, q: i32, r: i32, vertex_idx: u8) -> Option<CornerCellsHandle> {
+    pub fn corner_cells(&self, q: i32, r: i32, corner_idx: HexPointyDir) -> Option<CornerCellsHandle> {
         self.world
-            .corner_cells(ChunkId(q, r), HexPointyDir::from_index(vertex_idx as usize))
+            .corner_cells(ChunkId(q, r), corner_idx.into())
             .map(|c| c.into())
     }
 }

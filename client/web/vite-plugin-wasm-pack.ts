@@ -12,7 +12,12 @@ const typesDir = fileURLToPath(new URL('./src/wasm-types/shine_game.d.ts', impor
 const WASM_BIN_ID = '#wasm-bin';
 const WASM_BIN_RESOLVED = '\0wasm-bin';
 
-export function wasmPackPlugin(): Plugin {
+export interface WasmPackOptions {
+    // Build the wasm with the `heap-profile` feature (allocation metrics on top of the static heap).
+    profiling: boolean;
+}
+
+export function wasmPackPlugin(options: WasmPackOptions): Plugin {
     let isBuild = false;
 
     return {
@@ -20,9 +25,12 @@ export function wasmPackPlugin(): Plugin {
         enforce: 'pre',
         config(_, env) {
             isBuild = env.command === 'build';
-            if (!existsSync(wasmOut)) {
-                console.log('\n[wasm-pack] pkg/ not found, building...');
-                buildWasm();
+            // Rebuild real runs so the wasm matches the requested feature set; during tests reuse an
+            // existing pkg/ (only build if missing) to keep the run fast.
+            const isTest = !!process.env.VITEST;
+            if (!isTest || !existsSync(wasmOut)) {
+                console.log('\n[wasm-pack] building...');
+                buildWasm(options.profiling);
             }
             return {
                 resolve: {
@@ -58,7 +66,7 @@ export function wasmPackPlugin(): Plugin {
             server.watcher.on('change', (path) => {
                 if (path.endsWith('.rs')) {
                     console.log(`\n[wasm-pack] Rust file changed: ${path}`);
-                    if (buildWasm()) {
+                    if (buildWasm(options.profiling)) {
                         void server.restart();
                     }
                 }
@@ -67,10 +75,12 @@ export function wasmPackPlugin(): Plugin {
     };
 }
 
-function buildWasm(): boolean {
+function buildWasm(profiling: boolean): boolean {
     try {
         console.log('[wasm-pack] Building...');
-        execSync('wasm-pack build --target web --out-dir ../../client/web/pkg', {
+        // static-heap on every build keeps wasm linear memory from growing; heap-profile adds metrics.
+        const features = profiling ? 'static-heap,heap-profile' : 'static-heap';
+        execSync(`wasm-pack build --target web --out-dir ../../client/web/pkg --features ${features}`, {
             cwd: crateDir,
             stdio: 'inherit'
         });

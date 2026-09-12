@@ -45,17 +45,21 @@ macro_rules! define_typed_index {
             const NONE: Self = Self($ty::MAX);
 
             #[inline]
+            /// Creates a new typed index from a raw usize index.
+            /// Panics if the given index would overflow the underlying type or if it is equal to the NONE sentinel.
             fn new(index: usize) -> Self {
-                debug_assert!(
-                    index < usize::try_from($ty::MAX).unwrap(),
-                    concat!(stringify!($name), " index overflow")
-                );
-                Self(index.try_into().unwrap())
+                let value: $ty = index
+                    .try_into()
+                    .expect(concat!(stringify!($name), " index overflow"));
+                assert!(value != $ty::MAX, concat!(stringify!($name), " index overflow"));
+                Self(value)
             }
 
             #[inline]
+            /// Converts the typed index into a raw usize index
+            /// Panics if the typed index is NONE.
             fn into_index(self) -> usize {
-                debug_assert!(
+                assert!(
                     self.0 < $ty::MAX,
                     concat!("called into_index() on non-real ", stringify!($name))
                 );

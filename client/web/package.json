@@ -13,7 +13,7 @@
         }
     },
     "scripts": {
-        "dev": "pnpm build:wasm && vite",
+        "dev": "vite",
         "build": "tsc && vite build",
         "build:wasm": "wasm-pack build ../../crates/shine-game --target web --out-dir ../../client/web/pkg && pnpm run post:wasm",
         "format": "prettier --write .",

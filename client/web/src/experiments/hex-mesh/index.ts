@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { ManagedMesh } from '../../engine/resources/managed-mesh';
 import type { SceneContext } from '../../engine/scene';
 import { span } from '../../engine/utils';
+import { asWiredPolygonMesh } from '../../mesh/polygon-mesh';
 import { Experiment } from '../experiment';
 import { createControls, defaultParams, paramsToConfigJson } from './controls';
 import { HexMeshGroup, buildHexMesh } from './mesh-builder';
@@ -69,7 +70,7 @@ export class HexMesh extends Experiment {
                 const dual = wasmMesh.dual();
 
                 worldSize = wasmMesh.world_size();
-                this.currentMesh = buildHexMesh(primal, dual);
+                this.currentMesh = buildHexMesh(asWiredPolygonMesh(primal), asWiredPolygonMesh(dual));
 
                 dual.free();
                 primal.free();

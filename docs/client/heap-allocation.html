@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Heap Allocation</title>
+<link rel="stylesheet" href="../doc.css">
+</head>
+<body>
+
+<header class="doc-header">
+  <h1 class="doc-title">Heap Allocation</h1>
+  <div class="doc-meta">
+    <span>How the game heap is allocated across client hosts, and the cargo features each client enables and why.</span>
+  </div>
+</header>
+
+<h2>Problem</h2>
+<p>
+The game core is embedded into different client hosts, each with its own memory
+constraints. How its heap is allocated — and in particular whether the heap is
+allowed to grow — is therefore a per-client build decision rather than a single
+global choice. Some hosts require a heap that never grows so that allocations
+stay at stable addresses for the lifetime of the process; others are happy with a
+conventional growable heap. This decision is expressed through cargo features so
+each client selects the behaviour it needs, and a diagnostic feature helps size a
+fixed heap correctly.
+</p>
+
+<h2>Features</h2>
+<table>
+  <tr><th>Feature</th><th>Purpose</th></tr>
+  <tr>
+    <td><code>static-heap</code></td>
+    <td>Backs the heap with a fixed, pre-committed <code>static</code> arena and
+    installs an allocator that serves every allocation from it, so the heap
+    <strong>never grows</strong> and lives at a stable region for the process
+    lifetime. Chosen by hosts that cannot tolerate the heap moving or growing
+    (e.g. a host holding direct references into it). The whole ceiling is
+    committed up front; overflowing it is a hard OOM abort, not degradation.</td>
+  </tr>
+  <tr>
+    <td><code>heap-profile</code></td>
+    <td>Wraps the active allocator in a counting layer that tracks live and peak
+    bytes and exposes memory metrics (via <code>memory_info()</code>). Diagnostic
+    tooling — used to size a <code>static-heap</code> ceiling above the real
+    high-water mark. Left off in production for zero overhead.</td>
+  </tr>
+</table>
+<p>
+The features are independent and compose: with neither, the platform's default
+allocator is used; <code>heap-profile</code> wraps whatever allocator is
+underneath, so it can profile either the default heap or the static arena.
+</p>
+
+<h2>Memory metrics</h2>
+<p>
+<code>memory_info()</code> is a plain function available on every target: the
+active allocator fills a fixed-capacity report, so gathering metrics allocates
+nothing and cannot perturb the allocator being measured. Each enabled feature
+contributes its own entries; with no allocator feature the report is empty. Every
+entry carries a <code>unit</code>
+(<code>bytes</code>&nbsp;|&nbsp;<code>count</code>&nbsp;|&nbsp;<code>ratio</code>),
+so a consumer formats by unit (<code>bytes</code>&nbsp;→&nbsp;MiB,
+<code>ratio</code>&nbsp;→&nbsp;%) without knowing which allocator produced the
+value, and adding a metric never changes the consumer contract.
+</p>
+<p>
+Each entry is tagged with the <code>source</code> that produced it (e.g.
+<code>talc</code>, <code>count</code>), so metrics stay unambiguous when several
+allocators contribute; entries are sorted by <code>source</code> then
+<code>label</code> for a stable display order. Each client adds a thin binding
+over the common function for its host. The web binding exposes it to JavaScript
+as an array of <code>{source, label, value, unit}</code>.
+</p>
+<table>
+  <tr><th>Feature</th><th>Entries contributed</th></tr>
+  <tr><td><code>static-heap</code></td><td><code>reserved</code> (committed bytes) and <code>limit</code> (arena size).</td></tr>
+  <tr><td><code>heap-profile</code></td><td><code>used</code> (live requested bytes) and <code>peak</code>; plus, when composed with <code>static-heap</code>, the arena counters — allocated, available, claimed, and a fragmentation figure.</td></tr>
+</table>
+
+<h2>Clients</h2>
+
+<h3>Web</h3>
+<table>
+  <tr><th>Feature</th><th>Enabled</th><th>Why</th></tr>
+  <tr>
+    <td><code>static-heap</code></td>
+    <td><span class="tag good">all builds</span></td>
+    <td>The web host runs the core as wasm and hands JavaScript zero-copy views
+    that point directly into linear memory (see <a href="engine-api.html">Engine API</a>).
+    A growing wasm heap swaps the backing <code>ArrayBuffer</code> and detaches
+    those views mid-use; a non-growing heap removes the hazard structurally.</td>
+  </tr>
+  <tr>
+    <td><code>heap-profile</code></td>
+    <td><span class="tag warn">dev only</span></td>
+    <td>Enabled in the dev build (<code>VITE_HEAP_PROFILING</code>) to feed the
+    heap HUD and tune the ceiling; excluded from production so shipped builds
+    carry no counting overhead.</td>
+  </tr>
+</table>
+
+<h2>File map</h2>
+<table>
+  <tr><th>File</th><th>Role</th></tr>
+  <tr><td><code>crates/shine-game/Cargo.toml</code></td><td>Declares the <code>static-heap</code> and <code>heap-profile</code> features.</td></tr>
+  <tr><td><code>crates/shine-game/src/heap/</code></td><td>The global allocator selection, the static arena, the counting layer, and the portable <code>memory_info()</code> report.</td></tr>
+  <tr><td><code>crates/shine-game/src/wasm/heap/</code></td><td>Web binding exposing the report to JavaScript as a keyed object.</td></tr>
+  <tr><td><code>client/web/vite-plugin-wasm-pack.ts</code></td><td>Web build wiring: always <code>static-heap</code>, plus <code>heap-profile</code> when profiling.</td></tr>
+</table>
+
+</body>
+</html>

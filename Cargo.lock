@@ -53,6 +53,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "allocator-api2"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c880a97d28a3681c0267bd29cff89621202715b065127cd445fa0f0fe0aa2880"
+
+[[package]]
 name = "android_system_properties"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3868,12 +3874,14 @@ dependencies = [
  "glam",
  "itertools 0.15.0",
  "js-sys",
+ "lock_api",
  "log",
  "rand 0.10.2",
  "serde",
  "serde_json",
  "shine-core",
  "shine-test",
+ "talc",
  "thiserror 2.0.18",
  "tracing",
  "tracing-subscriber",
@@ -4211,6 +4219,16 @@ checksum = "8e1d1b10ced5ca923a1fcb8d03e96b8d3268065d724548c0211415ff6ac6bac4"
 dependencies = [
  "core-foundation-sys",
  "libc",
+]
+
+[[package]]
+name = "talc"
+version = "5.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "49661c532dfd6e4f570ef10a45cb92f6f4fce5a28245558ae48307b57b40a5b4"
+dependencies = [
+ "allocator-api2",
+ "lock_api",
 ]
 
 [[package]]

@@ -1,31 +1,9 @@
+import { HexFlatDir, HexPointyDir } from '#wasm';
 import * as THREE from 'three';
 import { ChunkConst } from '../../constants';
 import { range } from '../../engine/utils';
 
-/**
- * Pointy-top hex grid corner directions. Matches Rust HexPointyDir indices exactly.
- */
-export const enum HexPointyDir {
-    E = 0,
-    NE = 1,
-    NW = 2,
-    W = 3,
-    SW = 4,
-    SE = 5
-}
-
-/**
- * Flat-top hex grid directions. Matches Rust HexFlatDir indices exactly.
- * Used as argument to ChunkId.neighbor().
- */
-export const enum HexFlatDir {
-    NE = 0,
-    N = 1,
-    NW = 2,
-    SW = 3,
-    S = 4,
-    SE = 5
-}
+export { HexFlatDir, HexPointyDir };
 
 /** (dq, dr) deltas indexed by HexFlatDir. */
 const HEX_DIRECTIONS: ReadonlyArray<[number, number]> = [

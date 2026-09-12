@@ -11,32 +11,26 @@ pub struct WiredPolygonMeshHandle(WiredPolygonMesh);
 
 #[wasm_bindgen]
 impl WiredPolygonMeshHandle {
-    #[wasm_bindgen(getter)]
     pub fn vertices(&self) -> Float32Array {
         unsafe { Float32Array::view(&self.0.vertices) }
     }
 
-    #[wasm_bindgen(getter)]
     pub fn indices(&self) -> Uint32Array {
         unsafe { Uint32Array::view(&self.0.indices) }
     }
 
-    #[wasm_bindgen(getter)]
     pub fn ranges(&self) -> Uint32Array {
         unsafe { Uint32Array::view(&self.0.ranges) }
     }
 
-    #[wasm_bindgen(getter)]
     pub fn wire_indices(&self) -> Uint32Array {
         unsafe { Uint32Array::view(&self.0.wire_indices) }
     }
 
-    #[wasm_bindgen(getter)]
     pub fn wire_ranges(&self) -> Uint32Array {
         unsafe { Uint32Array::view(&self.0.wire_ranges) }
     }
 
-    #[wasm_bindgen(getter)]
     pub fn has_wires(&self) -> bool {
         !self.0.wire_indices.is_empty()
     }

@@ -1,11 +1,14 @@
-import { CornerCellsHandle, WasmWorld } from '#wasm';
+import { CornerCellsHandle, CornerSide, WasmWorld } from '#wasm';
 import * as THREE from 'three';
 import { EventSubscriptions } from '../../engine/events';
 import { SelectionMesh } from '../../engine/scene/selection-mesh';
 import { WireMesh } from '../../engine/scene/wire-mesh';
 import { computeLocalCentroids } from '../../mesh/centroid';
+import { asPolygonMesh } from '../../mesh/polygon-mesh';
 import { ChunkId, HexFlatDir, HexPointyDir } from './chunk-id';
 import { SELECTION_CHANGED, type SelectionChangedEvent } from './selection/selection-event';
+
+export { CornerSide };
 
 export class ChunkCornerId {
     constructor(
@@ -51,8 +54,8 @@ export class ChunkCorner {
     ) {
         this.group.userData = { chunkCornerId: id, chunkCorner: this };
         this.cells = world.corner_cells(id.chunkId.q, id.chunkId.r, id.cornerIdx)!;
-        this.wireframe = WireMesh.fromPolygons(this.group, this.cells);
-        this.selectionMesh = new SelectionMesh(this.group, this.cells);
+        this.wireframe = WireMesh.fromPolygons(this.group, asPolygonMesh(this.cells));
+        this.selectionMesh = new SelectionMesh(this.group, asPolygonMesh(this.cells));
         this.subscriptions = new EventSubscriptions(events);
         this.subscriptions.on<SelectionChangedEvent>(SELECTION_CHANGED, this.handleSelectionChanged);
     }
@@ -68,7 +71,7 @@ export class ChunkCorner {
 
     get centroids(): Float32Array {
         if (!this._centroids) {
-            this._centroids = computeLocalCentroids(this.cells)!;
+            this._centroids = computeLocalCentroids(asPolygonMesh(this.cells))!;
         }
         return this._centroids;
     }

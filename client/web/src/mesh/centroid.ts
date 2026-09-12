@@ -1,6 +1,6 @@
-import type { PolygonMesh } from './polygon-mesh';
+import type { PolygonMeshLike } from './polygon-mesh';
 
-export function computeLocalCentroids(mesh: PolygonMesh): Float32Array {
+export function computeLocalCentroids(mesh: PolygonMeshLike): Float32Array {
     const { vertices, indices, ranges } = mesh;
     const count = ranges.length / 2;
     const centroids = new Float32Array(count * 2);

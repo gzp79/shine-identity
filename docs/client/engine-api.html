@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Engine API</title>
+<link rel="stylesheet" href="../doc.css">
+</head>
+<body>
+
+<header class="doc-header">
+  <h1 class="doc-title">Engine API</h1>
+  <div class="doc-meta">
+    <span>The base pattern every wasm-exported engine model follows so a host can hold it, query it, and mutate it cheaply — without copies, dangling views, or keeping dead data alive.</span>
+  </div>
+</header>
+
+<h2>Problem</h2>
+<p>
+The engine core runs as wasm and hands the host long-lived models — a world, a
+chunk, its cell data, a layer. A host keeps these around and operates on them
+across many calls, so each model needs a reference back into live engine memory
+that is <em>cheap</em> (no per-call copy, no full re-lookup), <em>safe</em> (never
+reads memory that moved or was freed, never keeps the whole world alive by
+accident), and <em>uniform</em> (the same rules apply to every future model, not
+a bespoke scheme each time). This document is that shared pattern: one strong
+owner, weak handles downstream, a generation stamp, and zero-copy views — plus
+the invariants that keep it sound and how each is enforced.
+</p>
+
+<h2>Architecture</h2>
+<p>
+Exactly one <strong>strong</strong> reference exists — the exported world root
+holds it, and it alone keeps engine data alive. Every handle the host derives
+from it points back <strong>weakly</strong> and carries just enough identity to
+re-resolve and to detect that its target has changed. A handle is acquired down
+a chain (<code>World → Chunk → {CellData, Layer}</code>), but each one tracks the
+engine independently through its own weak references, so a stray handle can never
+pin the world and a dead world degrades every handle cleanly.
+</p>
+
+<div class="fanout">
+  <div class="fanout-source">
+    <div class="box box-green" style="flex:0 1 340px">
+      <div class="bname">World root (strong owner)</div>
+      <div class="bdetail">the only <code>Rc&lt;RefCell&lt;…&gt;&gt;</code>; owns chunks, buffers, generation cells</div>
+    </div>
+  </div>
+  <div class="fanout-trunk"></div>
+  <div class="fanout-branches">
+    <div class="fanout-branch">
+      <div class="fanout-branch-label">weak world + id + weak gen</div>
+      <div class="box box-violet"><div class="bname">Chunk handle</div>
+        <div class="bdetail">re-resolves by id; routes to derived models</div></div>
+    </div>
+    <div class="fanout-branch">
+      <div class="fanout-branch-label">weak gen only</div>
+      <div class="box box-violet"><div class="bname">CellData handle</div>
+        <div class="bdetail">owns a snapshot; independent of engine mutation</div></div>
+    </div>
+    <div class="fanout-branch">
+      <div class="fanout-branch-label">weak world + weak gen</div>
+      <div class="box box-violet"><div class="bname">Layer handle</div>
+        <div class="bdetail">vends zero-copy views into engine memory</div></div>
+    </div>
+  </div>
+</div>
+
+<h2>Reference toolbox</h2>
+<p>
+Every model is assembled from the same small kit. Reach for the lightest tool
+that satisfies the model's invariants; do not invent a per-model scheme.
+</p>
+<table>
+  <tr><th>Tool</th><th>What it is</th><th>Reach for it when</th></tr>
+  <tr>
+    <td>Single strong root</td>
+    <td>One owning reference (<code>Rc&lt;RefCell&lt;WorldInner&gt;&gt;</code>) held only by the exported world. It, and nothing else, keeps engine data alive.</td>
+    <td>Always — it is the anchor every other tool references. Never clone it into a handle.</td>
+  </tr>
+  <tr>
+    <td>Weak back-reference</td>
+    <td>A non-owning link (<code>Weak</code>) a handle keeps to the root or its target. Upgrading yields the target only while it still lives.</td>
+    <td>Any handle that must reach engine state on later calls. Upgrade per call; a failed upgrade is a clean "gone", not a crash.</td>
+  </tr>
+  <tr>
+    <td>Generation stamp</td>
+    <td>A shared <code>Rc&lt;Cell&lt;u64&gt;&gt;</code> owned by a unit (e.g. a chunk), carrying its <em>structural</em> version. Handles hold a <code>Weak</code> to it and remember the value seen at creation.</td>
+    <td>Any handle whose validity depends on the target's memory layout not changing. Bump on realloc/rebuild/unload, <strong>never</strong> on in-place value edits.</td>
+  </tr>
+  <tr>
+    <td>Zero-copy view</td>
+    <td>A typed view straight into engine-owned memory (e.g. a typed-array view over a fixed buffer). No copy crosses the boundary. Relies on the heap never moving — see <a href="heap-allocation.html">Heap Allocation</a>.</td>
+    <td>Reading bulk buffers on the hot path. Vend it from a getter that rebuilds it each call; the host must not cache it across a structural change.</td>
+  </tr>
+  <tr>
+    <td>Owned snapshot</td>
+    <td>Derived data copied once into a buffer the handle owns. Lives on the host's timeline, unaffected by later engine mutation.</td>
+    <td>Data the host keeps and re-reads while the engine keeps changing, where a stale-but-stable copy is preferable to a live view.</td>
+  </tr>
+  <tr>
+    <td>Ownership hand-off</td>
+    <td>A buffer moved <em>out</em> of the engine to the host by value (leaving a hole), then handed back to be reused. Exclusivity is provable: while the host holds it, the engine cannot touch it.</td>
+    <td>Mutation logs / scratch buffers reused frame to frame — pooling capacity instead of reallocating, with no aliasing.</td>
+  </tr>
+</table>
+
+<h3>Best practices</h3>
+<ul>
+  <li><strong>Strong at the root only.</strong> One owner; everything downstream is weak. A stray handle then can never leak the world, and shutting the world down invalidates all handles at once.</li>
+  <li><strong>No borrow escapes a function.</strong> A borrow of the shared root is taken, used, and dropped within a single call — never held across a return to the host or a host callback. (Otherwise a re-entrant borrow is a runtime panic, not a clean error.)</li>
+  <li><strong>Views are getters, fresh each call.</strong> Never return a cached view; rebuild it on access so the generation check runs every time and a moved buffer is caught on the next read.</li>
+  <li><strong>Generation tracks layout, not contents.</strong> Bump it only when memory is reallocated or rebuilt. In-place value edits leave it untouched, so live views keep seeing the buffer and simply observe the new values.</li>
+  <li><strong>Single-owner, single-thread.</strong> The graph is intentionally non-shareable across threads; it assumes a single-threaded host.</li>
+</ul>
+
+<h2>Exported models</h2>
+<p>
+Each model is one row of the toolbox applied. Columns: what it holds, how it
+tracks the engine world, what data it exposes, and where the host gets it.
+</p>
+<table>
+  <tr><th>Model</th><th>Holds</th><th>Tracks world via</th><th>Data exposed</th><th>Acquired from</th></tr>
+  <tr>
+    <td><strong>World</strong></td>
+    <td>Strong <code>Rc&lt;RefCell&lt;WorldInner&gt;&gt;</code></td>
+    <td>It <em>is</em> the owner</td>
+    <td>Chunk lookup / lifecycle</td>
+    <td>Exported constructor</td>
+  </tr>
+  <tr>
+    <td><strong>Chunk</strong></td>
+    <td>Weak world + <code>ChunkId</code> + weak generation</td>
+    <td>Weak world (resolve by id) + generation (identity)</td>
+    <td>None itself — a router to derived models</td>
+    <td>World, by id</td>
+  </tr>
+  <tr>
+    <td><strong>CellData</strong></td>
+    <td>Owned snapshot buffers + weak generation</td>
+    <td>Generation only (staleness of the snapshot)</td>
+    <td>Owned, host-lifetime snapshot</td>
+    <td>A Chunk function</td>
+  </tr>
+  <tr>
+    <td><strong>Layer</strong></td>
+    <td>Weak world + weak generation (+ layer key)</td>
+    <td>Weak world (reach its buffer) + generation (buffer still valid)</td>
+    <td>Zero-copy views into the fixed layer buffer</td>
+    <td>A Chunk function</td>
+  </tr>
+  <tr>
+    <td><strong>Update log</strong></td>
+    <td>Engine buffer moved out to the host + captured generation</td>
+    <td>Move-exclusivity (engine hole) + generation checked on return</td>
+    <td>Host-held engine buffer, given back to reuse</td>
+    <td>A Chunk/Layer <code>update()</code></td>
+  </tr>
+</table>
+
+<h3>Invariants and how they are ensured</h3>
+<p>
+The reference kit is chosen so that each hazard is either impossible by
+construction or surfaces as an immediate, legible runtime error the host can act
+on — never a silent bad read.
+</p>
+<table>
+  <tr><th>Invariant</th><th>Ensured by</th><th>Violation surfaces as</th></tr>
+  <tr>
+    <td>A handle never keeps the world alive</td>
+    <td>Strong reference exists only at the root; handles are weak</td>
+    <td>World drops on shutdown regardless of stray handles</td>
+  </tr>
+  <tr>
+    <td>The world is still there</td>
+    <td>Handle upgrades its weak world before use</td>
+    <td>Upgrade fails → "world gone" (wrong shutdown order)</td>
+  </tr>
+  <tr>
+    <td>The target still exists / was not reloaded</td>
+    <td>Weak generation cell (dies with the unit; a reload makes a new one)</td>
+    <td>Upgrade fails → "chunk gone / reloaded" (wrong load–unload order)</td>
+  </tr>
+  <tr>
+    <td>No view or snapshot reads reallocated memory</td>
+    <td>Generation captured at creation, compared on every access; bumped on any structural change</td>
+    <td>Generation mismatch → "stale, must re-fetch" (immediate, not lazy)</td>
+  </tr>
+  <tr>
+    <td>A live view never dangles across a rebuild</td>
+    <td>Views are per-call getters; the host does not cache them</td>
+    <td>Next getter call fails the generation check</td>
+  </tr>
+  <tr>
+    <td>No borrow of the root escapes a call</td>
+    <td>Borrows held only within a function body</td>
+    <td>Re-entrant borrow → runtime panic (a bug to fix, not a state)</td>
+  </tr>
+  <tr>
+    <td>At most one update in flight</td>
+    <td>The log is moved out, leaving a hole in the engine</td>
+    <td>Take finds the hole → "double update"</td>
+  </tr>
+  <tr>
+    <td>A returned buffer matches the current structure</td>
+    <td>The log carries the generation it was taken at; checked on return</td>
+    <td>Generation mismatch on give-back → rejected / discarded</td>
+  </tr>
+</table>
+
+<h3>The update hand-off</h3>
+<p>
+Mutation runs through a buffer the engine lends to the host and gets back, so the
+buffer's capacity is reused across frames and no copy crosses the boundary. While
+the host holds it the engine's slot is empty, which both prevents a second
+concurrent update and proves there is no aliasing.
+</p>
+
+<svg class="seq-diagram" viewBox="0 0 460 210" width="460">
+  <rect class="seq-actor seq-actor-violet" x="18" y="8" width="120" height="40" rx="6" />
+  <text class="seq-actor-label" x="78" y="30" text-anchor="middle">Host</text>
+  <rect class="seq-actor seq-actor-green" x="322" y="8" width="120" height="40" rx="6" />
+  <text class="seq-actor-label" x="382" y="30" text-anchor="middle">Engine (chunk)</text>
+  <line class="seq-lane" x1="78" y1="48" x2="78" y2="196" />
+  <line class="seq-lane" x1="382" y1="48" x2="382" y2="196" />
+
+  <text class="seq-msg-label" x="230" y="80" text-anchor="middle">1 · update()</text>
+  <line class="seq-msg" x1="78" y1="88" x2="382" y2="88" />
+  <polygon class="seq-arrowhead" points="382,88 374,84 374,92" />
+
+  <text class="seq-msg-label" x="230" y="120" text-anchor="middle">2 · log moved out (slot now empty)</text>
+  <line class="seq-msg-return" x1="382" y1="128" x2="78" y2="128" />
+  <polygon class="seq-arrowhead-return" points="78,128 86,124 86,132" />
+
+  <text class="seq-msg-label" x="230" y="176" text-anchor="middle">3 · give back log (gen checked)</text>
+  <line class="seq-msg" x1="78" y1="184" x2="382" y2="184" />
+  <polygon class="seq-arrowhead" points="382,184 374,180 374,188" />
+</svg>
+
+<h3>Optional client-side helpers</h3>
+<p>
+The give-back step and freeing a handle are easy to forget, and a lost buffer or
+leaked handle degrades performance (never correctness — a lost log just forces a
+fresh allocation next time). A host can wrap acquire-and-release into whatever
+scoped-cleanup construct it has — RAII in Rust/C++, <code>using</code>/dispose in
+TypeScript or C#, <code>defer</code> in Go — so the release is structural rather
+than remembered. This is a per-client convenience over the same engine contract;
+the pattern itself prescribes no host language.
+</p>
+
+<h2>File map</h2>
+<table>
+  <tr><th>File</th><th>Role</th></tr>
+  <tr><td><code>crates/shine-game/src/wasm/world/world.rs</code></td><td>Exported world root; holds the single strong reference and vends chunk handles.</td></tr>
+  <tr><td><code>crates/shine-game/src/wasm/world/cell_data.rs</code></td><td>CellData handle: owned snapshot exposed through zero-copy views, generation-checked.</td></tr>
+  <tr><td><code>crates/shine-game/src/world/world.rs</code></td><td>Core <code>WorldInner</code>: owns chunks and the generation source; free of host-reference concerns.</td></tr>
+  <tr><td><code>crates/shine-game/src/world/chunk.rs</code></td><td>Core chunk: owns its buffers and its generation cell; bumps it on structural change.</td></tr>
+  <tr><td><code>crates/shine-game/src/world/layer.rs</code></td><td>Fixed-size layer buffer viewed zero-copy; in-place edits leave the generation untouched.</td></tr>
+</table>
+
+<details data-agent="implementation" data-transient="true">
+  <summary>What counts as a structural change (generation bump) vs an in-place edit</summary>
+  <div class="details-body">
+    The generation is a <em>structural</em> version, not a content version, and the
+    distinction is load-bearing — get it wrong in either direction and the pattern
+    breaks. <strong>Bump</strong> on anything that reallocates or rebuilds a unit's
+    buffers: unload-and-reload at the same id, a remesh / re-quadrangulation that
+    reallocates the mesh or index maps, a change to tile/cell counts that reallocates
+    a layer buffer, or rebuilding cell data. <strong>Do not bump</strong> on an
+    in-place value write (e.g. painting a cell value in a fixed-size layer): the
+    buffer does not move, so a live view stays valid and should simply observe the
+    new value — bumping here would invalidate every view on every edit and defeat the
+    zero-copy path. Keeping layer buffers fixed-size (never growable) is what
+    collapses "buffer reallocated on write" out of existence, so in-place edits are
+    always safe. A separate finer-grained content version can be added later if a
+    host needs "contents changed, re-upload" without a structural change — do not
+    overload the structural generation with it.
+  </div>
+</details>
+
+<details data-agent="implementation" data-transient="true">
+  <summary>Why weak-to-target beats a strong shared reference for the generation cell</summary>
+  <div class="details-body">
+    A handle holds a <code>Weak</code> to the generation cell, not a strong
+    <code>Rc</code>. With a weak link, unload is detected for free: the unit drops,
+    the cell dies, and the next upgrade returns nothing — no explicit "bump on
+    unload" step to remember and forget. The captured value then only has to catch
+    the in-life structural change (a rebuild while the unit stays loaded). A strong
+    clone would instead keep the cell alive past unload, so the handle would have to
+    rely on <code>remove</code> remembering to bump first — an easy omission that
+    turns into a silent stale read. The weak link makes the unload case impossible to
+    get wrong at the cost of a marginally heavier upgrade, which is the right trade.
+  </div>
+</details>
+
+</body>
+</html>

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { ManagedLineSegments, ManagedMesh } from '../../engine/resources/managed-mesh';
 import { disposeObject3D } from '../../engine/resources/ownership';
 import { span } from '../../engine/utils';
-import type { WiredPolygonMeshHandle } from '../../wasm-types/shine_game';
+import type { WiredPolygonMeshLike } from '../../mesh/polygon-mesh';
 
 const EDGE_COLOR = 0x222222;
 const DUAL_EDGE_COLOR = 0x222222;
@@ -18,7 +18,7 @@ export interface HexMeshGroup {
     dispose: () => void;
 }
 
-function buildPrimalMesh(primal: WiredPolygonMeshHandle): ManagedMesh {
+function buildPrimalMesh(primal: WiredPolygonMeshLike): ManagedMesh {
     const vertices = primal.vertices;
     const quad_indices = primal.indices;
     const quad_ranges = primal.ranges;
@@ -63,7 +63,7 @@ function buildPrimalMesh(primal: WiredPolygonMeshHandle): ManagedMesh {
     return ManagedMesh.own(geom, mat);
 }
 
-function buildPrimalWire(primal: WiredPolygonMeshHandle): ManagedLineSegments {
+function buildPrimalWire(primal: WiredPolygonMeshLike): ManagedLineSegments {
     const vertices = primal.vertices;
     const quad_indices = primal.indices;
     const quad_ranges = primal.ranges;
@@ -88,7 +88,7 @@ function buildPrimalWire(primal: WiredPolygonMeshHandle): ManagedLineSegments {
     return ManagedLineSegments.own(geom, mat);
 }
 
-function buildDualMesh(dual: WiredPolygonMeshHandle): ManagedMesh {
+function buildDualMesh(dual: WiredPolygonMeshLike): ManagedMesh {
     const dual_vertices = dual.vertices;
     const dual_indices = dual.indices;
     const dual_ranges = dual.ranges;
@@ -132,7 +132,7 @@ function buildDualMesh(dual: WiredPolygonMeshHandle): ManagedMesh {
     return mesh;
 }
 
-function buildDualWire(dual: WiredPolygonMeshHandle): ManagedLineSegments {
+function buildDualWire(dual: WiredPolygonMeshLike): ManagedLineSegments {
     const dual_vertices = dual.vertices;
     const dual_indices = dual.indices;
     const dual_ranges = dual.ranges;
@@ -168,10 +168,10 @@ function buildDualWire(dual: WiredPolygonMeshHandle): ManagedLineSegments {
     return lines;
 }
 
-function buildAnchorWire(primal: WiredPolygonMeshHandle): ManagedLineSegments {
+function buildAnchorWire(primal: WiredPolygonMeshLike): ManagedLineSegments {
     const vertices = primal.vertices;
-    const anchor_indices = primal.wire_indices;
-    const anchor_ranges = primal.wire_ranges;
+    const anchor_indices = primal.wireIndices;
+    const anchor_ranges = primal.wireRanges;
 
     const positions: number[] = [];
     const colors: number[] = [];
@@ -213,10 +213,10 @@ function buildAnchorWire(primal: WiredPolygonMeshHandle): ManagedLineSegments {
     return lines;
 }
 
-function buildAnchorVertices(primal: WiredPolygonMeshHandle): THREE.InstancedMesh {
+function buildAnchorVertices(primal: WiredPolygonMeshLike): THREE.InstancedMesh {
     const vertices = primal.vertices;
-    const anchor_indices = primal.wire_indices;
-    const anchor_ranges = primal.wire_ranges;
+    const anchor_indices = primal.wireIndices;
+    const anchor_ranges = primal.wireRanges;
 
     const positions: number[] = [];
     const colors: number[] = [];
@@ -261,7 +261,7 @@ function buildAnchorVertices(primal: WiredPolygonMeshHandle): THREE.InstancedMes
     return instancedMesh;
 }
 
-export function buildHexMesh(primal: WiredPolygonMeshHandle, dual: WiredPolygonMeshHandle): HexMeshGroup {
+export function buildHexMesh(primal: WiredPolygonMeshLike, dual: WiredPolygonMeshLike): HexMeshGroup {
     const group = new THREE.Group();
 
     let primalMesh: ManagedMesh;

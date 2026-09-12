@@ -1,13 +1,20 @@
 use crate::{
-    indexed::TypedIndex,
+    define_typed_index, impl_typed_index_conversions,
+    indexed::{IdxVec, TypedIndex},
     math::{
         hex::{HexFlatDir, HexPointyDir, LatticeMesher},
         prng::{Pcg32, SplitMix64},
-        quadrangulation::{AnchorIndex, Quadrangulation, VertexIndex},
+        quadrangulation::{AnchorIndex, QuadIndex, Quadrangulation, VertexIndex},
     },
-    world::{ChunkId, InnerCells, CHUNK_WORLD_SIZE, SUBDIVISION_BASE},
+    world::{BaseLayer, ChunkId, InnerCells, CHUNK_WORLD_SIZE, SUBDIVISION_BASE},
 };
 use std::{cell::RefCell, rc::Rc};
+
+define_typed_index!(TileIndex, u32, "Dense, chunk-local tile id (finite quads only).");
+impl_typed_index_conversions!(TileIndex);
+
+define_typed_index!(CellIndex, u32, "Dense, chunk-local cell id (finite vertices only).");
+impl_typed_index_conversions!(CellIndex);
 
 /// Stable random streams for different aspects of chunk generation.
 /// Streams are cheap, create a new one for each aspect to ensure deterministic independence.
@@ -23,8 +30,13 @@ impl ChunkRngStreams {
 }
 
 pub struct Chunk {
-    pub rng_streams: ChunkRngStreams,
-    pub mesh: Quadrangulation,
+    rng_streams: ChunkRngStreams,
+    mesh: Quadrangulation,
+    quad_to_tile: IdxVec<QuadIndex, TileIndex>,
+    tile_to_quad: IdxVec<TileIndex, QuadIndex>,
+    vert_to_cell: IdxVec<VertexIndex, CellIndex>,
+    cell_to_vert: IdxVec<CellIndex, VertexIndex>,
+    base_layer: BaseLayer,
 }
 
 impl Chunk {
@@ -34,7 +46,65 @@ impl Chunk {
             .with_size(CHUNK_WORLD_SIZE)
             .generate();
 
-        Self { rng_streams, mesh: topology }
+        let mut quad_to_tile = IdxVec::from_elem(TileIndex::NONE, topology.quad_count());
+        let mut tile_to_quad = IdxVec::with_capacity(topology.finite_quad_count());
+        for qi in topology.finite_quad_index_iter() {
+            let ti = tile_to_quad.push(qi);
+            quad_to_tile[qi] = ti;
+        }
+
+        let mut vert_to_cell = IdxVec::from_elem(CellIndex::NONE, topology.vertex_count());
+        let mut cell_to_vert = IdxVec::with_capacity(topology.finite_vertex_count());
+        for vi in topology.finite_vertex_index_iter() {
+            let ci = cell_to_vert.push(vi);
+            vert_to_cell[vi] = ci;
+        }
+
+        let base_layer = BaseLayer::new(tile_to_quad.len(), 0);
+
+        Self {
+            rng_streams,
+            mesh: topology,
+            quad_to_tile,
+            tile_to_quad,
+            vert_to_cell,
+            cell_to_vert,
+            base_layer,
+        }
+    }
+
+    pub fn rng_streams(&self) -> &ChunkRngStreams {
+        &self.rng_streams
+    }
+
+    pub fn mesh(&self) -> &Quadrangulation {
+        &self.mesh
+    }
+
+    /// Dense `QuadIndex -> TileIndex` map, `TileIndex::NONE` for ghost (infinite) quads.
+    pub fn quad_to_tile(&self) -> &IdxVec<QuadIndex, TileIndex> {
+        &self.quad_to_tile
+    }
+
+    pub fn tile_to_quad(&self) -> &IdxVec<TileIndex, QuadIndex> {
+        &self.tile_to_quad
+    }
+
+    /// Dense `VertexIndex -> CellIndex` map, `CellIndex::NONE` for infinite (ghost) vertices.
+    pub fn vert_to_cell(&self) -> &IdxVec<VertexIndex, CellIndex> {
+        &self.vert_to_cell
+    }
+
+    pub fn cell_to_vert(&self) -> &IdxVec<CellIndex, VertexIndex> {
+        &self.cell_to_vert
+    }
+
+    pub fn base_layer(&self) -> &BaseLayer {
+        &self.base_layer
+    }
+
+    pub fn base_layer_mut(&mut self) -> &mut BaseLayer {
+        &mut self.base_layer
     }
 
     /// Flat (real) quad vertex positions [x, y, x, y, ...]
@@ -80,23 +150,20 @@ impl Chunk {
 
         let mut indices = Vec::with_capacity(site_count * 4); // 4 quads per vertex on average
         let mut ranges = Vec::with_capacity(site_count * 2);
-        let mut sites = Vec::with_capacity(site_count);
-        let mut tiles = Vec::with_capacity(tile_count);
+        let mut cell_ids = Vec::with_capacity(site_count);
+        let mut tile_ids = Vec::with_capacity(tile_count);
         let mut tile_distortions = Vec::with_capacity(tile_count * 8);
+        let mut tile_vertices = Vec::with_capacity(site_count * 4);
 
         let mut vertices = Vec::with_capacity(tile_count * 2);
-        let mut quad_map: std::collections::HashMap<crate::math::quadrangulation::QuadIndex, u32> =
-            std::collections::HashMap::new();
         for qi in self.mesh.finite_quad_index_iter() {
-            if let Some(center) = self.mesh.dual_p(qi) {
-                quad_map.insert(qi, (vertices.len() / 2) as u32);
-                vertices.push(center.x);
-                vertices.push(center.y);
-                tiles.push(qi.into_index() as u32);
-                for &qv in self.mesh.quad_vertices(qi) {
-                    tile_distortions.push(self.mesh[qv].position.x);
-                    tile_distortions.push(self.mesh[qv].position.y);
-                }
+            let center = self.mesh.dual_p(qi).expect("finite quad must have a dual point");
+            vertices.push(center.x);
+            vertices.push(center.y);
+            tile_ids.push(self.quad_to_tile[qi].into_index() as u32);
+            for &qv in self.mesh.quad_vertices(qi) {
+                tile_distortions.push(self.mesh[qv].position.x);
+                tile_distortions.push(self.mesh[qv].position.y);
             }
         }
 
@@ -106,21 +173,26 @@ impl Chunk {
             }
 
             ranges.push(indices.len() as u32);
-            sites.push(vi.into_index() as u32);
+            cell_ids.push(self.vert_to_cell[vi].into_index() as u32);
 
             for qv in self.mesh.vertex_ring_ccw(vi) {
-                indices.push(*quad_map.get(&qv.quad).unwrap());
+                indices.push(self.quad_to_tile[qv.quad].into_index() as u32);
+                tile_vertices.push(qv.local.into());
             }
 
             ranges.push(indices.len() as u32);
         }
 
+        // cell_tiles() binary-searches cell_ids, relying on this ascending order
+        debug_assert!(cell_ids.is_sorted());
+
         InnerCells {
             vertices,
             indices,
             ranges,
-            sites,
-            tiles,
+            cell_ids,
+            tile_ids,
+            tile_vertices,
             tile_distortions,
         }
     }

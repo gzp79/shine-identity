@@ -15,7 +15,10 @@
         "lint:eslint": "eslint .",
         "lint:build": "tsc -b --noEmit",
         "test:local": "playwright test",
-        "mock:services": "tsx ./tools/mock_services"
+        "mock:services": "tsx ./tools/mock_services",
+        "r2": "tsx ./tools/r2.ts",
+        "r2:deploy": "pnpm run r2 -- deploy",
+        "r2:cleanup": "pnpm run r2 -- cleanup"
     },
     "author": "",
     "license": "MIT",
@@ -23,6 +26,7 @@
         "node": ">=18.18.2"
     },
     "devDependencies": {
+        "@aws-sdk/client-s3": "^3.750.0",
         "@eslint/js": "^9.39.4",
         "@playwright/test": "^1.61.1",
         "@stylistic/eslint-plugin": "^5.10.0",

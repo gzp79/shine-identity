@@ -1,5 +1,5 @@
 use crate::math::quadrangulation::{
-    EdgeCirculator, QuadEdge, QuadEdgeType, QuadIndex, QuadVertex, Quadrangulation, VertexIndex,
+    EdgeCirculator, QuadEdge, QuadEdgeType, QuadIndex, QuadVertex, Quadrangulation, Rot4Idx, VertexIndex,
 };
 use glam::Vec2;
 use std::iter;
@@ -21,6 +21,11 @@ impl Quadrangulation {
 
     pub fn quad_vertices(&self, qi: QuadIndex) -> &[VertexIndex] {
         self.quads[qi].vertices.as_slice()
+    }
+
+    /// Returns the quad-local corner (0..4) of vi within qi, or None if vi is not a corner of qi.
+    pub fn quad_local_vertex(&self, qi: QuadIndex, vi: VertexIndex) -> Option<Rot4Idx> {
+        self.quads[qi].find_vertex(vi)
     }
 
     pub fn edge_type(&self, a: VertexIndex, b: VertexIndex) -> QuadEdgeType {

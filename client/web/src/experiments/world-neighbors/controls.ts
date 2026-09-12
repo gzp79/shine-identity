@@ -9,8 +9,8 @@ export type Params = {
     showInterior: [boolean, boolean, boolean, boolean, boolean, boolean, boolean];
     showAllEdges: boolean;
     showEdges: [boolean, boolean, boolean, boolean, boolean, boolean];
-    showAllVertices: boolean;
-    showVertices: [boolean, boolean, boolean, boolean, boolean, boolean];
+    showAllCorners: boolean;
+    showCorners: [boolean, boolean, boolean, boolean, boolean, boolean];
 };
 
 export function defaultParams(): Params {
@@ -22,8 +22,8 @@ export function defaultParams(): Params {
         showInterior: [true, true, true, true, true, true, true],
         showAllEdges: true,
         showEdges: [true, true, true, true, true, true],
-        showAllVertices: true,
-        showVertices: [true, true, true, true, true, true]
+        showAllCorners: true,
+        showCorners: [true, true, true, true, true, true]
     };
 }
 
@@ -109,12 +109,6 @@ export function createControls(
         (v) => (params.showAllInterior = v),
         onDisplayChange
     );
-    addToggleFolder(
-        gui,
-        'Boundary Vertices',
-        params.showVertices,
-        (v) => (params.showAllVertices = v),
-        onDisplayChange
-    );
+    addToggleFolder(gui, 'Boundary Corners', params.showCorners, (v) => (params.showAllCorners = v), onDisplayChange);
     addToggleFolder(gui, 'Boundary Edges', params.showEdges, (v) => (params.showAllEdges = v), onDisplayChange);
 }

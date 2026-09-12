@@ -4,6 +4,7 @@ import { EventSubscriptions } from '../../engine/events';
 import { SelectionMesh } from '../../engine/scene/selection-mesh';
 import { WireMesh } from '../../engine/scene/wire-mesh';
 import { computeLocalCentroids } from '../../mesh/centroid';
+import { asPolygonMesh } from '../../mesh/polygon-mesh';
 import { ChunkId, HexFlatDir } from './chunk-id';
 import { SELECTION_CHANGED, type SelectionChangedEvent } from './selection/selection-event';
 
@@ -46,8 +47,8 @@ export class ChunkEdge {
     ) {
         this.group.userData = { chunkEdgeId: id, chunkEdge: this };
         this.cells = world.edge_cells(id.chunkId.q, id.chunkId.r, id.edgeIdx)!;
-        this.wireframe = WireMesh.fromPolygons(this.group, this.cells);
-        this.selectionMesh = new SelectionMesh(this.group, this.cells);
+        this.wireframe = WireMesh.fromPolygons(this.group, asPolygonMesh(this.cells));
+        this.selectionMesh = new SelectionMesh(this.group, asPolygonMesh(this.cells));
         this.subscriptions = new EventSubscriptions(events);
         this.subscriptions.on<SelectionChangedEvent>(SELECTION_CHANGED, this.handleSelectionChanged);
     }
@@ -63,7 +64,7 @@ export class ChunkEdge {
 
     get centroids(): Float32Array {
         if (!this._centroids) {
-            this._centroids = computeLocalCentroids(this.cells)!;
+            this._centroids = computeLocalCentroids(asPolygonMesh(this.cells))!;
         }
         return this._centroids;
     }
